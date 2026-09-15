@@ -1,0 +1,6 @@
+{
+  "name": "Suivi des Trajets",
+  "description": "Enregistrement des trajets (lieu, motif, date, heure d'arrivée et de départ), calcul automatique des durées, récapitulatif des temps et export vers Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

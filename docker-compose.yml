@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  suivi-trajets:
+    build: .
+    container_name: suivi-trajets
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
