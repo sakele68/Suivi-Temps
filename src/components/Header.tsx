@@ -8,6 +8,7 @@ import {
   Clock,
   Car,
   FileText,
+  FolderGit2,
 } from 'lucide-react';
 import { TripCalculated } from '../types';
 import { exportTripsToExcel, exportTripsToCsv } from '../utils/excelExport';
@@ -17,6 +18,7 @@ interface HeaderProps {
   trips: TripCalculated[];
   onAddClick: () => void;
   onOpenProxmoxModal: () => void;
+  onOpenGitHubModal: () => void;
   onTripsImported: (trips: any[]) => void;
 }
 
@@ -24,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   trips,
   onAddClick,
   onOpenProxmoxModal,
+  onOpenGitHubModal,
   onTripsImported,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,6 +88,17 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Guide GitHub */}
+            <button
+              id="btn-github-guide"
+              onClick={onOpenGitHubModal}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer border border-slate-200"
+              title="Guide d'installation depuis GitHub"
+            >
+              <FolderGit2 className="w-4 h-4 text-slate-700" />
+              <span>GitHub</span>
+            </button>
+
             {/* Proxmox LXC Guide button */}
             <button
               id="btn-proxmox-guide"

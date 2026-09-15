@@ -29,12 +29,14 @@ import { TripList } from './components/TripList';
 import { SummaryByLocation } from './components/SummaryByLocation';
 import { SummaryByDate } from './components/SummaryByDate';
 import { ProxmoxLxcModal } from './components/ProxmoxLxcModal';
+import { GitHubInstallModal } from './components/GitHubInstallModal';
 
 export default function App() {
   const [rawTrips, setRawTrips] = useState<Trip[]>(() => loadTripsFromStorage());
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [isProxmoxModalOpen, setIsProxmoxModalOpen] = useState(false);
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>('list');
   const [activeLieuFilter, setActiveLieuFilter] = useState<string | undefined>(undefined);
 
@@ -149,6 +151,7 @@ export default function App() {
           setIsFormOpen(true);
         }}
         onOpenProxmoxModal={() => setIsProxmoxModalOpen(true)}
+        onOpenGitHubModal={() => setIsGitHubModalOpen(true)}
         onTripsImported={(imported) => setRawTrips(imported)}
       />
 
@@ -272,6 +275,13 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={() => setIsGitHubModalOpen(true)}
+              className="text-slate-600 hover:text-slate-900 font-medium inline-flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <span>Installation GitHub</span>
+            </button>
+            <span>•</span>
+            <button
               onClick={() => setIsProxmoxModalOpen(true)}
               className="text-slate-600 hover:text-emerald-700 font-medium inline-flex items-center gap-1 transition-colors cursor-pointer"
             >
@@ -283,6 +293,12 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* GitHub Installation Modal */}
+      <GitHubInstallModal
+        isOpen={isGitHubModalOpen}
+        onClose={() => setIsGitHubModalOpen(false)}
+      />
 
       {/* Proxmox LXC Deployment Modal */}
       <ProxmoxLxcModal
