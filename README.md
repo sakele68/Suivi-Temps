@@ -91,6 +91,33 @@ L'application est disponible sur l'adresse IP de votre conteneur : `http://<IP_D
 
 ---
 
+## 🌐 Exposition Internet avec Caddy (`sakele.freeboxos.fr/suivi-temps`)
+
+Pour rendre l'application accessible depuis Internet sous votre domaine Freebox, ajoutez simplement ce bloc dans votre **`Caddyfile`** :
+
+```caddy
+sakele.freeboxos.fr {
+    # Redirection automatique si le slash final est omis
+    redir /suivi-temps /suivi-temps/
+
+    # Reverse proxy vers l'IP de votre conteneur LXC
+    handle_path /suivi-temps/* {
+        reverse_proxy <IP_DE_VOTRE_LXC>:80
+    }
+}
+```
+
+Rechargez Caddy :
+```bash
+caddy reload
+# ou
+systemctl reload caddy
+```
+
+L'application a été configurée avec `base: './'` dans `vite.config.ts`, ce qui lui permet de charger tous ses scripts et styles de manière relative sous `/suivi-temps/` sans aucune erreur 404.
+
+---
+
 ## 🛠️ Fonctionnalités incluses
 
 - 📍 **Saisie complète des trajets** : Lieu, Motif (intervention, réunion, chantier...), Date, Heure départ, Heure arrivée, Notes.

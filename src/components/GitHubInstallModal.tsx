@@ -49,6 +49,16 @@ npm run build
 # Prévisualiser la version de production en local
 npm run preview`;
 
+  const caddyScript = `sakele.freeboxos.fr {
+    # Redirection automatique si le slash final est omis
+    redir /suivi-temps /suivi-temps/
+
+    # Reverse proxy vers l'IP locale de votre conteneur LXC
+    handle_path /suivi-temps/* {
+        reverse_proxy <IP_DE_VOTRE_LXC>:80
+    }
+}`;
+
   const lxcProxmoxGitScript = `# Sur votre serveur / conteneur Proxmox LXC (Debian ou Ubuntu) :
 apt update && apt install -y git curl nginx
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -196,6 +206,49 @@ systemctl restart nginx`;
                 )}
               </button>
             </div>
+          </div>
+
+          {/* Étape 4 : Configuration Caddy Reverse Proxy */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                4
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                  <span>Accès Internet via Caddy (sakele.freeboxos.fr/suivi-temps)</span>
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Dans votre fichier <code>Caddyfile</code>, ajoutez ce bloc pour router les requêtes vers votre conteneur LXC :
+                </p>
+              </div>
+            </div>
+
+            <div className="relative mt-2">
+              <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">
+                <code>{caddyScript}</code>
+              </pre>
+              <button
+                onClick={() => copyToClipboard(caddyScript, 'caddy')}
+                className="absolute top-3 right-3 p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs cursor-pointer"
+                title="Copier la configuration Caddy"
+              >
+                {copiedId === 'caddy' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400 font-sans">Copié !</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="font-sans">Copier</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              💡 <em>L'application a été configurée avec des chemins relatifs (<code>base: './'</code>) afin de fonctionner directement sous <code>/suivi-temps</code> sans aucune modification de code.</em>
+            </p>
           </div>
 
           {/* Astuce de mise à jour continue */}

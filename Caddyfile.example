@@ -1,0 +1,26 @@
+# Configuration Caddyfile pour sakele.freeboxos.fr/suivi-temps
+
+# Cas 1 : Caddy sert de Reverse Proxy vers votre conteneur LXC (Recommandé)
+sakele.freeboxos.fr {
+    # Redirection automatique si on oublie le slash final
+    redir /suivi-temps /suivi-temps/
+
+    # Reverse proxy vers l'IP de votre conteneur LXC
+    # Remplacez 192.168.1.XX par l'IP de votre conteneur LXC Suivi-LaPoste
+    handle_path /suivi-temps/* {
+        reverse_proxy 192.168.1.XX:80
+    }
+}
+
+# -------------------------------------------------------------
+# Cas 2 : Caddy est installé directement dans le conteneur LXC
+# et sert directement les fichiers statiques sans passer par Nginx :
+#
+# sakele.freeboxos.fr {
+#     redir /suivi-temps /suivi-temps/
+#     handle_path /suivi-temps/* {
+#         root * /root/Suivi-Temps/dist
+#         file_server
+#         try_files {path} /index.html
+#     }
+# }
