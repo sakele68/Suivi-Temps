@@ -16,6 +16,7 @@ import { Trip, TripCalculated, ViewTab } from './types';
 import {
   loadTripsFromStorage,
   saveTripsToStorage,
+  clearAllTripsFromStorage,
 } from './utils/storage';
 import {
   enrichTrip,
@@ -135,6 +136,25 @@ export default function App() {
     }
   };
 
+  // Purge all trips
+  const handlePurgeAll = () => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer tous les trajets enregistrés ? Cette action videra entièrement votre liste.')) {
+      setRawTrips([]);
+      clearAllTripsFromStorage();
+    }
+  };
+
+  // Purge only demo trips
+  const handlePurgeDemos = () => {
+    if (confirm("Supprimer tous les trajets d'exemple de la liste ?")) {
+      setRawTrips((prev) => {
+        const cleaned = prev.filter((t) => !t.id.startsWith('demo-'));
+        saveTripsToStorage(cleaned);
+        return cleaned;
+      });
+    }
+  };
+
   // Filter by lieu from summary table
   const handleFilterByLieuFromSummary = (lieu: string) => {
     setActiveLieuFilter(lieu);
@@ -152,6 +172,7 @@ export default function App() {
         }}
         onOpenProxmoxModal={() => setIsProxmoxModalOpen(true)}
         onOpenGitHubModal={() => setIsGitHubModalOpen(true)}
+        onPurgeTrips={handlePurgeAll}
         onTripsImported={(imported) => setRawTrips(imported)}
       />
 
@@ -243,6 +264,7 @@ export default function App() {
             onEdit={handleEdit}
             onDuplicate={handleDuplicate}
             onDelete={handleDelete}
+            onPurgeDemos={handlePurgeDemos}
             onAddClick={() => {
               setEditingTrip(null);
               setIsFormOpen(true);

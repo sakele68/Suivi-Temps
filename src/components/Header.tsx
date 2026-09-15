@@ -9,6 +9,7 @@ import {
   Car,
   FileText,
   FolderGit2,
+  Trash2,
 } from 'lucide-react';
 import { TripCalculated } from '../types';
 import { exportTripsToExcel, exportTripsToCsv } from '../utils/excelExport';
@@ -19,6 +20,7 @@ interface HeaderProps {
   onAddClick: () => void;
   onOpenProxmoxModal: () => void;
   onOpenGitHubModal: () => void;
+  onPurgeTrips: () => void;
   onTripsImported: (trips: any[]) => void;
 }
 
@@ -27,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   onAddClick,
   onOpenProxmoxModal,
   onOpenGitHubModal,
+  onPurgeTrips,
   onTripsImported,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,6 +130,16 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Upload className="w-4 h-4" />
               </button>
+              {trips.length > 0 && (
+                <button
+                  id="btn-purge-trips"
+                  onClick={onPurgeTrips}
+                  title="Purger les trajets enregistrés"
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"

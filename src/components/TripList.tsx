@@ -13,6 +13,7 @@ import {
   Moon,
   RotateCcw,
   Tag,
+  Sparkles,
 } from 'lucide-react';
 import { TripCalculated, FilterOptions } from '../types';
 import { formatDateFr } from '../utils/timeCalculations';
@@ -26,6 +27,7 @@ interface TripListProps {
   onDuplicate: (trip: TripCalculated) => void;
   onDelete: (id: string) => void;
   onAddClick: () => void;
+  onPurgeDemos?: () => void;
 }
 
 export const TripList: React.FC<TripListProps> = ({
@@ -37,6 +39,7 @@ export const TripList: React.FC<TripListProps> = ({
   onDuplicate,
   onDelete,
   onAddClick,
+  onPurgeDemos,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'this_week' | 'this_month' | 'custom'>('all');
@@ -104,8 +107,29 @@ export const TripList: React.FC<TripListProps> = ({
     onClearLieuFilter();
   };
 
+  const hasDemoTrips = trips.some((t) => t.id.startsWith('demo-'));
+
   return (
     <div id="trip-list-card" className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+      {/* Demo trips notice banner */}
+      {hasDemoTrips && onPurgeDemos && (
+        <div className="bg-amber-50/90 border-b border-amber-200/80 px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-950">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Trajets d'exemple détectés</strong> : Vous pouvez les supprimer en un clic pour démarrer avec votre propre liste.
+            </span>
+          </div>
+          <button
+            id="btn-purge-demos"
+            onClick={onPurgeDemos}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-semibold rounded-lg text-xs transition-colors shrink-0 cursor-pointer shadow-xs"
+          >
+            Purger les exemples
+          </button>
+        </div>
+      )}
+
       {/* Filters Toolbar */}
       <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
