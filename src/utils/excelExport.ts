@@ -24,6 +24,7 @@ export function exportTripsToExcel(
   const detailRows = trips.map((t) => ({
     'Date': formatDateFr(t.date),
     'Date (ISO)': t.date,
+    'Période': t.periode || '',
     'Lieu / Trajet': t.lieu,
     'Motif': t.motif || '',
     'Heure Départ': t.heureDepart,
@@ -41,6 +42,7 @@ export function exportTripsToExcel(
   detailRows.push({
     'Date': 'TOTAL CUMULÉ',
     'Date (ISO)': '',
+    'Période': '',
     'Lieu / Trajet': `${trips.length} trajet(s)`,
     'Motif': '',
     'Heure Départ': '',

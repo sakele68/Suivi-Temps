@@ -10,6 +10,8 @@ import {
   FileText,
   FolderGit2,
   Trash2,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 import { TripCalculated } from '../types';
 import { exportTripsToExcel, exportTripsToCsv } from '../utils/excelExport';
@@ -17,6 +19,9 @@ import { exportBackupJSON, importBackupJSON } from '../utils/storage';
 
 interface HeaderProps {
   trips: TripCalculated[];
+  isDbConnected?: boolean;
+  isSyncing?: boolean;
+  onRefreshSync?: () => void;
   onAddClick: () => void;
   onOpenProxmoxModal: () => void;
   onOpenGitHubModal: () => void;
@@ -26,6 +31,9 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   trips,
+  isDbConnected = false,
+  isSyncing = false,
+  onRefreshSync,
   onAddClick,
   onOpenProxmoxModal,
   onOpenGitHubModal,
@@ -82,6 +90,24 @@ export const Header: React.FC<HeaderProps> = ({
                   <Server className="w-3 h-3 text-emerald-600" />
                   <span>Proxmox LXC</span>
                 </button>
+                {isDbConnected ? (
+                  <span
+                    id="badge-sqlite-online"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 shadow-xs"
+                    title="Connecté à la base SQLite trajets.db sur votre conteneur"
+                  >
+                    <Database className="w-3 h-3 text-blue-600" />
+                    <span>SQLite Connecté</span>
+                  </span>
+                ) : (
+                  <span
+                    id="badge-sqlite-offline"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200"
+                    title="Mode local (sauvegarde dans le navigateur)"
+                  >
+                    <span>Mode Local</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500">
                 Calcul automatique des durées et export Excel
@@ -112,8 +138,20 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden md:inline">Déploiement</span> LXC
             </button>
 
-            {/* Backup & Restore */}
+            {/* Backup & Restore & Sync */}
             <div className="flex items-center border-r border-slate-200 pr-2 mr-1 gap-1">
+              {onRefreshSync && (
+                <button
+                  id="btn-sync-sqlite"
+                  onClick={onRefreshSync}
+                  title="Synchroniser avec la base de données SQLite"
+                  className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                    isSyncing ? 'text-blue-600 bg-blue-50' : 'text-slate-600 hover:text-blue-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
+                </button>
+              )}
               <button
                 id="btn-backup-json"
                 onClick={handleBackup}

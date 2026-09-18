@@ -6,6 +6,7 @@ export interface Trip {
   heureDepart: string; // HH:mm
   heureArrivee: string; // HH:mm
   notes?: string;
+  periode?: string; // e.g. "Trajet 1 (Matin)", "Trajet 2 (Après-midi)"
   createdAt: number;
 }
 

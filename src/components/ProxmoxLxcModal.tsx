@@ -29,24 +29,41 @@ export const ProxmoxLxcModal: React.FC<ProxmoxLxcModalProps> = ({ isOpen, onClos
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const nginxScript = `# 1. Dans la console de votre LXC (Debian ou Ubuntu) sur Proxmox :
-apt update && apt install -y nginx curl git
-
-# 2. Cloner ou transférer les fichiers de l'application :
-git clone <URL_DU_DEPOT> /opt/suivi-trajets
-cd /opt/suivi-trajets
-
-# 3. Installer Node.js et compiler le projet :
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt install -y nodejs
+  const nginxScript = `# Dans le dossier ~/Suivi-Temps de votre conteneur LXC :
+cd ~/Suivi-Temps
+git pull
 npm install
 npm run build
 
-# 4. Déployer vers le dossier web Nginx :
+# Copier le frontend vers Nginx
 rm -rf /var/www/html/*
 cp -r dist/* /var/www/html/
 
-# 5. Configurer Nginx pour le routage SPA :
+# Configurer et lancer le service API SQLite automatique
+cat << 'EOF' > /etc/systemd/system/suivi-temps.service
+[Unit]
+Description=Suivi des Trajets - API SQLite Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Suivi-Temps
+ExecStart=/usr/bin/node /root/Suivi-Temps/dist/server.cjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATABASE_PATH=/root/Suivi-Temps/trajets.db
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable suivi-temps && systemctl restart suivi-temps
+
+# Configurer Nginx avec le proxy /api/
 cat << 'EOF' > /etc/nginx/sites-available/default
 server {
     listen 80 default_server;
@@ -55,17 +72,22 @@ server {
     index index.html;
     server_name _;
 
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
-
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 }
 EOF
 
 nginx -t && systemctl restart nginx
-# Votre application est accessible sur http://<IP_DU_LXC> !`;
+# C'est tout ! Vos trajets dans trajets.db sont maintenant connectés en direct !`;
 
   const dockerCompose = `version: '3.8'
 services:

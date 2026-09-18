@@ -17,6 +17,12 @@ import {
   loadTripsFromStorage,
   saveTripsToStorage,
   clearAllTripsFromStorage,
+  fetchTripsFromApi,
+  saveTripsToApi,
+  updateTripOnApi,
+  deleteTripFromApi,
+  purgeAllOnApi,
+  purgeDemosOnApi,
 } from './utils/storage';
 import {
   enrichTrip,
@@ -34,6 +40,8 @@ import { GitHubInstallModal } from './components/GitHubInstallModal';
 
 export default function App() {
   const [rawTrips, setRawTrips] = useState<Trip[]>(() => loadTripsFromStorage());
+  const [isDbConnected, setIsDbConnected] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [isProxmoxModalOpen, setIsProxmoxModalOpen] = useState(false);
@@ -41,10 +49,64 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ViewTab>('list');
   const [activeLieuFilter, setActiveLieuFilter] = useState<string | undefined>(undefined);
 
-  // Save trips to storage on change
+  // Sync with SQLite backend on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function syncWithServer() {
+      setIsSyncing(true);
+      try {
+        const { trips: serverTrips, isConnected } = await fetchTripsFromApi();
+        if (!isMounted) return;
+        setIsDbConnected(isConnected);
+
+        if (isConnected) {
+          if (serverTrips.length > 0) {
+            console.log(`[Sync] Loaded ${serverTrips.length} trips from SQLite database.`);
+            setRawTrips(serverTrips);
+            saveTripsToStorage(serverTrips);
+          } else {
+            // If SQLite is empty but local storage has trips, upload them
+            const local = loadTripsFromStorage();
+            if (local.length > 0) {
+              console.log(`[Sync] Uploading ${local.length} local trips to SQLite.`);
+              const updated = await saveTripsToApi(local);
+              if (updated && isMounted) {
+                setRawTrips(updated);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Sync] Failed to sync on mount:', err);
+      } finally {
+        if (isMounted) setIsSyncing(false);
+      }
+    }
+    syncWithServer();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Save trips to local storage on change
   useEffect(() => {
     saveTripsToStorage(rawTrips);
   }, [rawTrips]);
+
+  // Manual sync refresh
+  const handleRefreshSync = async () => {
+    setIsSyncing(true);
+    try {
+      const { trips: serverTrips, isConnected } = await fetchTripsFromApi();
+      setIsDbConnected(isConnected);
+      if (isConnected) {
+        setRawTrips(serverTrips);
+        saveTripsToStorage(serverTrips);
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Enrich trips with calculated duration metrics
   const calculatedTrips: TripCalculated[] = useMemo(() => {
@@ -81,33 +143,43 @@ export default function App() {
     return calculatedTrips.reduce((acc, t) => acc + t.durationMinutes, 0);
   }, [calculatedTrips]);
 
-  // Add or update trip
-  const handleSaveTrip = (
-    data: Omit<Trip, 'id' | 'createdAt'>,
+  // Add or update trip (supports single trip or dual-trip day entry)
+  const handleSaveTrip = async (
+    data: Omit<Trip, 'id' | 'createdAt'> | Array<Omit<Trip, 'id' | 'createdAt'>>,
     editingId?: string
   ) => {
     if (editingId) {
+      const singleData = Array.isArray(data) ? data[0] : data;
       setRawTrips((prev) =>
         prev.map((t) =>
           t.id === editingId
-            ? { ...t, ...data }
+            ? { ...t, ...singleData }
             : t
         )
       );
+      if (isDbConnected) {
+        const updated = await updateTripOnApi(editingId, singleData);
+        if (updated) setRawTrips(updated);
+      }
     } else {
-      const newTrip: Trip = {
-        ...data,
-        id: 'trip-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-        createdAt: Date.now(),
-      };
-      setRawTrips((prev) => [newTrip, ...prev]);
+      const itemsToAdd = Array.isArray(data) ? data : [data];
+      const newTrips: Trip[] = itemsToAdd.map((item, index) => ({
+        ...item,
+        id: 'trip-' + Date.now() + '-' + index + '-' + Math.random().toString(36).substring(2, 7),
+        createdAt: Date.now() + index,
+      }));
+      setRawTrips((prev) => [...newTrips, ...prev]);
+      if (isDbConnected) {
+        const updated = await saveTripsToApi(newTrips);
+        if (updated) setRawTrips(updated);
+      }
     }
     setIsFormOpen(false);
     setEditingTrip(null);
   };
 
   // Duplicate a trip (prefill with today's date)
-  const handleDuplicate = (trip: TripCalculated) => {
+  const handleDuplicate = async (trip: TripCalculated) => {
     const duplicated: Trip = {
       id: 'trip-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       date: new Date().toISOString().slice(0, 10),
@@ -117,8 +189,13 @@ export default function App() {
       heureArrivee: trip.heureArrivee,
       notes: trip.notes,
       createdAt: Date.now(),
+      periode: trip.periode,
     };
     setRawTrips((prev) => [duplicated, ...prev]);
+    if (isDbConnected) {
+      const updated = await saveTripsToApi(duplicated);
+      if (updated) setRawTrips(updated);
+    }
   };
 
   // Edit trip
@@ -130,28 +207,39 @@ export default function App() {
   };
 
   // Delete trip
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce trajet ?')) {
       setRawTrips((prev) => prev.filter((t) => t.id !== id));
+      if (isDbConnected) {
+        const updated = await deleteTripFromApi(id);
+        if (updated) setRawTrips(updated);
+      }
     }
   };
 
   // Purge all trips
-  const handlePurgeAll = () => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer tous les trajets enregistrés ? Cette action videra entièrement votre liste.')) {
+  const handlePurgeAll = async () => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer tous les trajets enregistrés ? Cette action videra entièrement votre base et votre liste.')) {
       setRawTrips([]);
       clearAllTripsFromStorage();
+      if (isDbConnected) {
+        await purgeAllOnApi();
+      }
     }
   };
 
   // Purge only demo trips
-  const handlePurgeDemos = () => {
+  const handlePurgeDemos = async () => {
     if (confirm("Supprimer tous les trajets d'exemple de la liste ?")) {
       setRawTrips((prev) => {
         const cleaned = prev.filter((t) => !t.id.startsWith('demo-'));
         saveTripsToStorage(cleaned);
         return cleaned;
       });
+      if (isDbConnected) {
+        const updated = await purgeDemosOnApi();
+        if (updated) setRawTrips(updated);
+      }
     }
   };
 
@@ -166,6 +254,9 @@ export default function App() {
       {/* Header */}
       <Header
         trips={calculatedTrips}
+        isDbConnected={isDbConnected}
+        isSyncing={isSyncing}
+        onRefreshSync={handleRefreshSync}
         onAddClick={() => {
           setEditingTrip(null);
           setIsFormOpen(true);
@@ -173,7 +264,13 @@ export default function App() {
         onOpenProxmoxModal={() => setIsProxmoxModalOpen(true)}
         onOpenGitHubModal={() => setIsGitHubModalOpen(true)}
         onPurgeTrips={handlePurgeAll}
-        onTripsImported={(imported) => setRawTrips(imported)}
+        onTripsImported={async (imported) => {
+          setRawTrips(imported);
+          if (isDbConnected && imported.length > 0) {
+            const updated = await saveTripsToApi(imported);
+            if (updated) setRawTrips(updated);
+          }
+        }}
       />
 
       {/* Main Container */}
@@ -187,6 +284,7 @@ export default function App() {
             <TripForm
               initialTrip={editingTrip}
               existingLocations={existingLocations}
+              existingTrips={calculatedTrips}
               onSubmit={handleSaveTrip}
               onCancel={() => {
                 setIsFormOpen(false);

@@ -2,6 +2,13 @@ import { Trip } from '../types';
 
 const STORAGE_KEY = 'proxmox_lxc_trajets_data_v1';
 
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/suivi-temps')) {
+    return '/suivi-temps/api';
+  }
+  return '/api';
+}
+
 export const INITIAL_DEMO_TRIPS: Trip[] = [];
 
 export function loadTripsFromStorage(): Trip[] {
@@ -34,6 +41,103 @@ export function clearAllTripsFromStorage(): void {
     localStorage.removeItem(STORAGE_KEY);
   } catch (err) {
     console.error('Error clearing localStorage:', err);
+  }
+}
+
+// ================= API CALLS FOR SQLITE BACKEND =================
+
+export async function fetchTripsFromApi(): Promise<{ trips: Trip[]; isConnected: boolean }> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/trips`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data.trips)) {
+      return { trips: data.trips, isConnected: true };
+    }
+    return { trips: [], isConnected: true };
+  } catch (err) {
+    console.warn('[Storage] API not reachable, falling back to local cache:', err);
+    return { trips: loadTripsFromStorage(), isConnected: false };
+  }
+}
+
+export async function saveTripsToApi(
+  trips: Omit<Trip, 'id' | 'createdAt'> | Array<Omit<Trip, 'id' | 'createdAt'>> | Trip | Trip[]
+): Promise<Trip[] | null> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trips),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.trips || null;
+  } catch (err) {
+    console.warn('[Storage] Failed to save trip to API:', err);
+    return null;
+  }
+}
+
+export async function updateTripOnApi(
+  id: string,
+  trip: Partial<Trip>
+): Promise<Trip[] | null> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/trips/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trip),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.trips || null;
+  } catch (err) {
+    console.warn('[Storage] Failed to update trip on API:', err);
+    return null;
+  }
+}
+
+export async function deleteTripFromApi(id: string): Promise<Trip[] | null> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/trips/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.trips || null;
+  } catch (err) {
+    console.warn('[Storage] Failed to delete trip on API:', err);
+    return null;
+  }
+}
+
+export async function purgeDemosOnApi(): Promise<Trip[] | null> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/trips/purge-demos`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.trips || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function purgeAllOnApi(): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/trips/purge-all`, {
+      method: 'DELETE',
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
