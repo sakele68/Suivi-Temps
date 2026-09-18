@@ -1,70 +1,110 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import Database from 'better-sqlite3';
+import initSqlJs, { Database } from 'sql.js';
 import { createServer as createViteServer } from 'vite';
 
 const PORT = 3000;
 const DB_PATH = process.env.DATABASE_PATH || path.resolve(process.cwd(), 'trajets.db');
 
-// Initialize SQLite database
-let db: InstanceType<typeof Database> | null = null;
-try {
-  console.log(`[Database] Connecting to SQLite at: ${DB_PATH}`);
-  db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
+let db: Database | null = null;
 
-  // Create table matching user's SQLite schema with support for all fields
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS trajets (
-      id TEXT PRIMARY KEY,
-      date TEXT,
-      lieu TEXT,
-      motif TEXT,
-      heureDepart TEXT,
-      heureArrivee TEXT,
-      notes TEXT,
-      createdAt INTEGER,
-      periode TEXT
-    );
-  `);
-
-  // Safely ensure 'periode' column exists if user created table previously without it
+function saveDbToFile() {
+  if (!db) return;
   try {
-    const tableInfo = db.prepare('PRAGMA table_info(trajets)').all() as Array<{ name: string }>;
-    const hasPeriode = tableInfo.some((col) => col.name === 'periode');
-    if (!hasPeriode) {
-      db.exec('ALTER TABLE trajets ADD COLUMN periode TEXT;');
-      console.log('[Database] Added missing column: periode');
-    }
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(DB_PATH, buffer);
   } catch (err) {
-    console.warn('[Database] Column verification note:', err);
+    console.error('[Database] Failed to write database to disk:', err);
   }
+}
 
-  const countRow = db.prepare('SELECT count(*) as count FROM trajets').get() as { count: number };
-  console.log(`[Database] Connected successfully. Found ${countRow?.count ?? 0} existing trips in trajets.db.`);
-} catch (err) {
-  console.error('[Database] Failed to open SQLite database:', err);
+async function initDatabase(): Promise<Database | null> {
+  try {
+    console.log(`[Database] Initializing SQLite (WASM) for: ${DB_PATH}`);
+    const SQL = await initSqlJs();
+
+    let database: Database;
+    if (fs.existsSync(DB_PATH)) {
+      const fileBuffer = fs.readFileSync(DB_PATH);
+      database = new SQL.Database(fileBuffer);
+      console.log(`[Database] Loaded existing database file: ${DB_PATH}`);
+    } else {
+      database = new SQL.Database();
+      console.log(`[Database] Created new SQLite database in memory.`);
+    }
+
+    // Create table matching user's SQLite schema
+    database.run(`
+      CREATE TABLE IF NOT EXISTS trajets (
+        id TEXT PRIMARY KEY,
+        date TEXT,
+        lieu TEXT,
+        motif TEXT,
+        heureDepart TEXT,
+        heureArrivee TEXT,
+        notes TEXT,
+        createdAt INTEGER,
+        periode TEXT
+      );
+    `);
+
+    // Ensure 'periode' column exists
+    try {
+      const res = database.exec('PRAGMA table_info(trajets);');
+      if (res.length > 0) {
+        const columns = res[0].values.map((row) => row[1]);
+        if (!columns.includes('periode')) {
+          database.run('ALTER TABLE trajets ADD COLUMN periode TEXT;');
+          console.log('[Database] Added missing column: periode');
+        }
+      }
+    } catch (e) {
+      console.warn('[Database] Column verify note:', e);
+    }
+
+    saveDbToFile();
+    return database;
+  } catch (err) {
+    console.error('[Database] Failed to initialize SQLite database:', err);
+    return null;
+  }
 }
 
 async function startServer() {
+  db = await initDatabase();
+
   const app = express();
   app.use(express.json({ limit: '10mb' }));
+
+  // Helper to query objects
+  function queryAll(sql: string, params: any[] = []): any[] {
+    if (!db) return [];
+    const stmt = db.prepare(sql);
+    if (params.length > 0) {
+      stmt.bind(params as any);
+    }
+    const results: any[] = [];
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  }
 
   // ================= API ROUTES =================
   app.get('/api/health', (req, res) => {
     let tripCount = 0;
     if (db) {
       try {
-        const row = db.prepare('SELECT count(*) as count FROM trajets').get() as { count: number };
-        tripCount = row?.count ?? 0;
-      } catch {
-        // ignore
-      }
+        const rows = queryAll('SELECT count(*) as count FROM trajets;');
+        tripCount = rows[0]?.count ?? 0;
+      } catch {}
     }
     res.json({
       status: 'ok',
-      database: db ? 'sqlite' : 'none',
+      database: db ? 'sqlite-wasm' : 'none',
       dbPath: DB_PATH,
       tripCount,
       timestamp: new Date().toISOString(),
@@ -77,7 +117,7 @@ async function startServer() {
       return res.status(503).json({ error: 'Database not available' });
     }
     try {
-      const rows = db.prepare('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC').all();
+      const rows = queryAll('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC;');
       return res.json({ trips: rows });
     } catch (err) {
       console.error('[API] Error fetching trips:', err);
@@ -95,32 +135,27 @@ async function startServer() {
       const body = req.body;
       const tripsToInsert = Array.isArray(body) ? body : [body];
 
-      const insertStmt = db.prepare(`
-        INSERT OR REPLACE INTO trajets (id, date, lieu, motif, heureDepart, heureArrivee, notes, createdAt, periode)
-        VALUES (@id, @date, @lieu, @motif, @heureDepart, @heureArrivee, @notes, @createdAt, @periode)
-      `);
-
-      const insertMany = db.transaction((trips) => {
-        for (const t of trips) {
-          insertStmt.run({
-            id: t.id || 'trip-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-            date: t.date || '',
-            lieu: t.lieu || '',
-            motif: t.motif || '',
-            heureDepart: t.heureDepart || '',
-            heureArrivee: t.heureArrivee || '',
-            notes: t.notes || '',
-            createdAt: t.createdAt || Date.now(),
-            periode: t.periode || '',
-          });
-        }
-      });
-
-      insertMany(tripsToInsert);
+      for (const t of tripsToInsert) {
+        db.run(
+          `INSERT OR REPLACE INTO trajets (id, date, lieu, motif, heureDepart, heureArrivee, notes, createdAt, periode)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            t.id || 'trip-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+            t.date || '',
+            t.lieu || '',
+            t.motif || '',
+            t.heureDepart || '',
+            t.heureArrivee || '',
+            t.notes || '',
+            t.createdAt || Date.now(),
+            t.periode || '',
+          ]
+        );
+      }
+      saveDbToFile();
       console.log(`[API] Saved ${tripsToInsert.length} trip(s) to SQLite.`);
 
-      // Return updated list
-      const rows = db.prepare('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC').all();
+      const rows = queryAll('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC;');
       return res.json({ success: true, count: tripsToInsert.length, trips: rows });
     } catch (err) {
       console.error('[API] Error saving trip:', err);
@@ -138,49 +173,30 @@ async function startServer() {
       const { id } = req.params;
       const t = req.body;
 
-      const updateStmt = db.prepare(`
-        UPDATE trajets
-        SET date = @date,
-            lieu = @lieu,
-            motif = @motif,
-            heureDepart = @heureDepart,
-            heureArrivee = @heureArrivee,
-            notes = @notes,
-            periode = @periode
-        WHERE id = @id
-      `);
-
-      const result = updateStmt.run({
-        id,
-        date: t.date || '',
-        lieu: t.lieu || '',
-        motif: t.motif || '',
-        heureDepart: t.heureDepart || '',
-        heureArrivee: t.heureArrivee || '',
-        notes: t.notes || '',
-        periode: t.periode || '',
-      });
-
-      if (result.changes === 0) {
-        // Fallback insert if not found
-        const insertStmt = db.prepare(`
-          INSERT INTO trajets (id, date, lieu, motif, heureDepart, heureArrivee, notes, createdAt, periode)
-          VALUES (@id, @date, @lieu, @motif, @heureDepart, @heureArrivee, @notes, @createdAt, @periode)
-        `);
-        insertStmt.run({
+      db.run(
+        `UPDATE trajets
+         SET date = ?,
+             lieu = ?,
+             motif = ?,
+             heureDepart = ?,
+             heureArrivee = ?,
+             notes = ?,
+             periode = ?
+         WHERE id = ?;`,
+        [
+          t.date || '',
+          t.lieu || '',
+          t.motif || '',
+          t.heureDepart || '',
+          t.heureArrivee || '',
+          t.notes || '',
+          t.periode || '',
           id,
-          date: t.date || '',
-          lieu: t.lieu || '',
-          motif: t.motif || '',
-          heureDepart: t.heureDepart || '',
-          heureArrivee: t.heureArrivee || '',
-          notes: t.notes || '',
-          createdAt: t.createdAt || Date.now(),
-          periode: t.periode || '',
-        });
-      }
+        ]
+      );
 
-      const rows = db.prepare('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC').all();
+      saveDbToFile();
+      const rows = queryAll('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC;');
       return res.json({ success: true, trips: rows });
     } catch (err) {
       console.error('[API] Error updating trip:', err);
@@ -192,8 +208,9 @@ async function startServer() {
   app.delete('/api/trips/purge-demos', (req, res) => {
     if (!db) return res.status(503).json({ error: 'Database not available' });
     try {
-      db.prepare("DELETE FROM trajets WHERE id LIKE 'demo-%'").run();
-      const rows = db.prepare('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC').all();
+      db.run("DELETE FROM trajets WHERE id LIKE 'demo-%';");
+      saveDbToFile();
+      const rows = queryAll('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC;');
       return res.json({ success: true, trips: rows });
     } catch (err) {
       return res.status(500).json({ error: 'Failed to purge demos' });
@@ -204,7 +221,8 @@ async function startServer() {
   app.delete('/api/trips/purge-all', (req, res) => {
     if (!db) return res.status(503).json({ error: 'Database not available' });
     try {
-      db.prepare('DELETE FROM trajets').run();
+      db.run('DELETE FROM trajets;');
+      saveDbToFile();
       return res.json({ success: true, trips: [] });
     } catch (err) {
       return res.status(500).json({ error: 'Failed to purge all' });
@@ -219,8 +237,9 @@ async function startServer() {
 
     try {
       const { id } = req.params;
-      db.prepare('DELETE FROM trajets WHERE id = ?').run(id);
-      const rows = db.prepare('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC').all();
+      db.run('DELETE FROM trajets WHERE id = ?;', [id]);
+      saveDbToFile();
+      const rows = queryAll('SELECT * FROM trajets ORDER BY date DESC, heureDepart DESC;');
       return res.json({ success: true, trips: rows });
     } catch (err) {
       console.error('[API] Error deleting trip:', err);
